@@ -261,6 +261,41 @@ def regex_check(printableDiff, commit_time, branch_name, prev_commit, blob, comm
             regex_matches.append(foundRegex)
     return regex_matches
 
+# get each change as a "diff block", returns a plaintext array
+def get_diff_blocks(printableDiff, blob):
+    diff_block = re.split(r'@@\ \-[0-9]+,[0-9]+\ \+[0-9]+,[0-9]+\ @@', printableDiff)
+    # the first element is always empty
+    if ( len(diff_block[0]) < 1 ):
+        del diff_block[0]
+
+    return diff_block
+
+
+# calculate LOC metadata
+def diff_calc_loc(printableDiff, blob):
+    if( len(printableDiff) > 1 ):
+
+        changes = {
+            "file_path": blob.b_path if blob.b_path else blob.a_path,
+            "lines_of_code": [],
+            "change_count": 0
+        }
+
+        diff_header_data = re.findall(r'@@\ \-([0-9]+),([0-9]+)\ \+([0-9]+),([0-9]+)\ @@', printableDiff)
+
+        for data in diff_header_data:
+            changes["lines_of_code"].append({
+                "prev_start": data[0],
+                "prev_count": data[1],
+                "start": data[2],
+                "count": data[3]
+            })
+
+        changes["change_count"] = len(changes["lines_of_code"])
+        return changes
+
+    return None
+
 def diff_worker(diff, curr_commit, prev_commit, branch_name, commitHash, custom_regexes, do_entropy, do_regex, printJson, surpress_output, path_inclusions, path_exclusions, allow):
     issues = []
     for blob in diff:
@@ -269,6 +304,26 @@ def diff_worker(diff, curr_commit, prev_commit, branch_name, commitHash, custom_
             continue
         if not path_included(blob, path_inclusions, path_exclusions):
             continue
+
+        diff_metadata = diff_calc_loc(printableDiff, blob)
+        if(diff_metadata == None):
+            continue
+
+        diff_blocks = get_diff_blocks(printableDiff, blob)
+
+        for index, dchange in enumerate(diff_blocks):
+
+            print(">>>>>>>>>>>>>>>>")
+            print("#", "file_path: ", diff_metadata["file_path"])
+            print("#", "commit_hash:", commitHash)
+            print("#", "prev_commit:", prev_commit)
+            print("#", "change_id: ", (index + 1), "of", len(diff_blocks))
+            print("#", "loc: ", diff_metadata["lines_of_code"][index])
+            print(">>>>>>>>>>>>>>>>")
+            print(dchange,"\n")
+
+            print('////////!!!!!')
+
         for key in allow:
             printableDiff = allow[key].sub('', printableDiff)
         commit_time =  datetime.datetime.fromtimestamp(prev_commit.committed_date).strftime('%Y-%m-%d %H:%M:%S')
